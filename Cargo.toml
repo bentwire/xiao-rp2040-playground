@@ -1,0 +1,21 @@
+[package]
+name = "xiao-rp2040-template"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+bytemuck = "1.13.1"
+cortex-m = "0.7.7"
+cortex-m-rt = "0.7.3"
+embedded-hal = "0.2.7"
+fugit = "0.3.7"
+panic-halt = "0.2.0"
+rgb = { version = "0.8.36", features = ["argb","as-bytes"] }
+rp2040-boot2 = "0.3.0"
+seeeduino-xiao-rp2040 = "0.4.0"
+smart-leds = "0.3.0"
+usb-device = "0.2.9"
+usbd-serial = "0.1.1"
+ws2812-pio = "0.6.0"
