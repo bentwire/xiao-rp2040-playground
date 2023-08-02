@@ -417,7 +417,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "xiao-rp2040-template"
+name = "xiao-rp2040-playground"
 version = "0.1.0"
 dependencies = [
  "bytemuck",
