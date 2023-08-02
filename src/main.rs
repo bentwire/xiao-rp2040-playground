@@ -28,14 +28,10 @@ static mut CORE1_STACK: Stack<4096> = Stack::new();
 ///
 /// The `#[entry]` macro ensures the Cortex-M start-up code calls this function
 /// as soon as all global variables are initialised.
-///
-/// The function configures the RP2040 peripherals, then blinks the LED in an
-/// infinite loop.
 #[entry]
 fn main() -> ! {
     // Grab our singleton objects
     let mut pac = pac::Peripherals::take().unwrap();
-    //let core = pac::CorePeripherals::take().unwrap();
  
     // Set up the watchdog driver - needed by the clock setup code
     let mut watchdog = hal::Watchdog::new(pac.WATCHDOG);
@@ -82,7 +78,7 @@ fn main() -> ! {
         &mut pac.RESETS,
     );
  
-    // Configure the pins to operate as a push-pull output
+    // Configure the LED pins to operate as a push-pull output
     let mut led_blue_pin = pins.led_blue.into_push_pull_output();
     let mut led_green_pin = pins.led_green.into_push_pull_output();
     let mut led_red_pin = pins.led_red.into_push_pull_output();
@@ -100,7 +96,6 @@ fn main() -> ! {
     led_red_pin.set_low().unwrap();
 
     let _core1_task = core1.spawn(unsafe {&mut CORE1_STACK.mem}, move || {
-        //core1_task(clocks.system_clock.freq(), pclk_freq, led_blue_pin, led_red_pin)
         let core = unsafe { pac::CorePeripherals::steal() };
         let mut pac = unsafe { pac::Peripherals::steal() };
 
@@ -117,7 +112,7 @@ fn main() -> ! {
             pins.neopixel_data.into_mode(),
             &mut pio,
             sm0,
-            pclk_freq,//clocks.peripheral_clock.freq(),
+            pclk_freq,
             timer.count_down(),
         );
 
@@ -199,27 +194,12 @@ fn main() -> ! {
 
     let mut color = RGB8::default();
 
-    //let delay_time = 100;
     led_green_pin.set_high().unwrap();
     loop {
-        //led_blue_pin.set_high().unwrap();
-        //led_red_pin.set_high().unwrap();
         
-        //color = color.iter().map(|ch| { ch + 1 }).collect();
         // See if USB is ready.  If its not, don't do anything that takes time here!
         // It will cause the USB transaction to time out!
         if !usb_dev.poll(&mut [ &mut serial ]) {
-            // color += incr;
-            // incr = incr.iter().map(|ch| { ch + 1 }).collect();
-    
-            // // Set RGB LED via core1 task.
-            // let data: u32 = bytemuck::cast(color.alpha(0u8));
-    
-            // sio.fifo.write_blocking(data);
-    
-            // //delay0.delay_ms(delay_time);
-            // led_green_pin.toggle().unwrap();
-    
             continue;
         }
 
@@ -239,7 +219,9 @@ fn main() -> ! {
         let mut buf = [0u8; 64];
 
         // is there data?
+        // Make this a serialized struct eventually.
         match serial.read(&mut buf) {
+            // We received some data.
             Ok(rx_cnt) => {
                 led_green_pin.toggle().unwrap();
                 if rx_cnt >= 3 {
@@ -251,22 +233,27 @@ fn main() -> ! {
                     sio.fifo.write_blocking(data);                    
                 }
             },
+            // Something broke.
             Err(_) => {
 
             },
         }
-
+        
+        // Constantly send current color value.
+        // This should be a serialized struct with
+        // all the data to send eventually...
         match serial.write(color.as_slice()) {
+            // count bytes were written
             Ok(_count) => {
-                // count bytes were written
+                // Don't care yet.
             },
             // No data could be written (buffers full)
             Err(UsbError::WouldBlock) => {
-
+                // Don't care yet.
             },
             // An error occurred
             Err(_err) => {
-
+                // Don't care yet.
             },
         };        
     }
