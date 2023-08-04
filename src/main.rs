@@ -1,11 +1,14 @@
 #![no_std]
 #![no_main]
 
+mod pins;
+
+use fugit::RateExtU32;
+
 use embedded_hal::digital::v2::{OutputPin,ToggleableOutputPin};
 use hal::pio::PIOExt;
 use hal::Timer;
 use hal::multicore::{Multicore, Stack};
-
 // Force link against panic_halt;
 use panic_halt as _;
 use rgb::{ComponentMap, ComponentSlice};
@@ -50,6 +53,8 @@ fn main() -> ! {
     )
     .ok()
     .unwrap();
+    // PClk
+    let pclk_freq = clocks.peripheral_clock.freq();
  
     // Initialize USB.
     let usb_bus = UsbBusAllocator::new(UsbBus::new(
@@ -60,8 +65,7 @@ fn main() -> ! {
         &mut pac.RESETS,
     ));
 
-    let mut serial = SerialPort::new(&usb_bus);
-
+    let mut usb_serial = SerialPort::new(&usb_bus);
     let mut usb_dev = UsbDeviceBuilder::new(&usb_bus, UsbVidPid(0x16c0, 0x27dd))
         .product("Serial port")
         .device_class(USB_CLASS_CDC)
@@ -69,22 +73,31 @@ fn main() -> ! {
 
     // The single-cycle I/O block controls our GPIO pins
     let mut sio = hal::Sio::new(pac.SIO);
- 
+    let _core_id = hal::Sio::core();
+
     // Set the pins up according to their function on this particular board
-    let pins = seeeduino_xiao_rp2040::Pins::new(
+    let pins = pins::Pins::new(
         pac.IO_BANK0,
         pac.PADS_BANK0,
         sio.gpio_bank0,
         &mut pac.RESETS,
     );
  
+    // UART Config
+    let debug_uart = hal::uart::UartPeripheral::new(pac.UART0,
+                (pins.tx.into_mode(), pins.rx.into_mode()),
+                &mut pac.RESETS).enable(
+                    hal::uart::UartConfig::new(
+                        115200u32.Hz(), 
+                        hal::uart::DataBits::Eight, 
+                        None, 
+                        hal::uart::StopBits::One),
+                    pclk_freq).unwrap();
+
     // Configure the LED pins to operate as a push-pull output
     let mut led_blue_pin = pins.led_blue.into_push_pull_output();
     let mut led_green_pin = pins.led_green.into_push_pull_output();
     let mut led_red_pin = pins.led_red.into_push_pull_output();
-
-    // Clk
-    let pclk_freq = clocks.peripheral_clock.freq();
 
     // Setup multicore
     let mut mc = Multicore::new(&mut pac.PSM, &mut pac.PPB, &mut sio.fifo);
@@ -95,21 +108,25 @@ fn main() -> ! {
     led_green_pin.set_high().unwrap();
     led_red_pin.set_low().unwrap();
 
+    debug_uart.write_full_blocking(b"Start Core 1\r\n");
     let _core1_task = core1.spawn(unsafe {&mut CORE1_STACK.mem}, move || {
         let core = unsafe { pac::CorePeripherals::steal() };
         let mut pac = unsafe { pac::Peripherals::steal() };
 
         let mut sio = hal::Sio::new(pac.SIO);
+        let _core_id = hal::Sio::core();
 
         // Setup PIO
         let (mut pio, sm0, _, _, _) = pac.PIO0.split(&mut pac.RESETS);
+
+        let mut delay1 = cortex_m::delay::Delay::new(core.SYST, clocks.system_clock.freq().to_Hz());
 
         // Timer for Neopixel driver
         let timer = Timer::new(pac.TIMER, &mut pac.RESETS);
 
         // Setup Neopixel RGB LED
         let mut ws = Ws2812::new(
-            pins.neopixel_data.into_mode(),
+            pins.mosi.into_mode(), //pins.neopixel_data.into_mode(),
             &mut pio,
             sm0,
             pclk_freq,
@@ -117,21 +134,25 @@ fn main() -> ! {
         );
 
         // Turn on Neopixel RGB LED
-        let mut neopixel_power = pins.neopixel_power.into_push_pull_output();
-        neopixel_power.set_high().unwrap();
+        //let mut neopixel_power = pins.neopixel_power.into_push_pull_output();
+        //neopixel_power.set_high().unwrap();
 
 
-        let mut delay1 = cortex_m::delay::Delay::new(core.SYST, clocks.system_clock.freq().to_Hz());
+        // The 64 pixels on the fibonacci board
+        let mut pixels: [rgb::RGB<u8>; 64] = [rgb::RGB8::default(); 64];
+        
         let mut current_color: rgb::RGB<i16> = rgb::RGB::<i16>::default();
         let mut next_color: rgb::RGB<i16>;// = rgb::RGB::<i16>::default();
-        //let mut req_color: rgb::RGB<u8> = RGB8::new(0, 0, 0);
-        //ws.write([req_color].iter().copied()).unwrap();
+        let mut req_color: rgb::RGB<u8> = RGB8::new(0, 0, 255);
+        ws.write([req_color].iter().copied()).unwrap();
         
         led_blue_pin.set_high().unwrap();
         led_red_pin.set_high().unwrap();
         loop {
+            // FIFO is 8 deep.
             let input = sio.fifo.read();
             match input {
+                // Data to read.
                 Some(word) => {
                     // Turn RED off Blue on.
                     led_red_pin.set_high().unwrap();
@@ -150,7 +171,10 @@ fn main() -> ! {
                         // Toggle blue LED every loop we are running.
                         //led_blue_pin.toggle().unwrap();
                         let color: rgb::RGB<u8> = current_color.iter().map(|c| { if c < 0 { 0u8 } else if c > 255 { 255u8 } else { c as u8}}).collect();
-                        ws.write([color].iter().copied()).unwrap();
+                        for pixel in pixels.iter_mut() {
+                            *pixel = color;
+                        }
+                        ws.write(pixels.iter().copied()).unwrap();
                         delay1.delay_ms(10);
     
                         // Are we done yet?
@@ -199,7 +223,8 @@ fn main() -> ! {
         
         // See if USB is ready.  If its not, don't do anything that takes time here!
         // It will cause the USB transaction to time out!
-        if !usb_dev.poll(&mut [ &mut serial ]) {
+        if !usb_dev.poll(&mut [ &mut usb_serial ]) {
+            led_green_pin.set_high().unwrap();
             continue;
         }
 
@@ -220,10 +245,10 @@ fn main() -> ! {
 
         // is there data?
         // Make this a serialized struct eventually.
-        match serial.read(&mut buf) {
+        match usb_serial.read(&mut buf) {
             // We received some data.
             Ok(rx_cnt) => {
-                led_green_pin.toggle().unwrap();
+                led_green_pin.set_low().unwrap();
                 if rx_cnt >= 3 {
                     color.as_mut_slice().copy_from_slice(&buf[0..3]);
 
@@ -242,7 +267,7 @@ fn main() -> ! {
         // Constantly send current color value.
         // This should be a serialized struct with
         // all the data to send eventually...
-        match serial.write(color.as_slice()) {
+        match usb_serial.write(color.as_slice()) {
             // count bytes were written
             Ok(_count) => {
                 // Don't care yet.
