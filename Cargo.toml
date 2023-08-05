@@ -6,6 +6,7 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+arrayvec = { version = "0.7.4", default-features = false }
 bytemuck = "1.13.1"
 cortex-m = "0.7.7"
 cortex-m-rt = "0.7.3"

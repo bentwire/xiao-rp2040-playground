@@ -7,6 +7,7 @@ mod pins;
 mod colorwheel;
 
 use core::iter;
+use arrayvec::ArrayVec;
 use colorwheel::colorwheel;
 
 use embedded_hal::digital::v2::OutputPin;
@@ -133,12 +134,16 @@ fn main() -> ! {
     // Pixel translation matrix from rainbow+demo.py
     let spiral_translate = [33,26,42,25,27,41,19,43,34,18,49,20,32,40,11,48,24,17,53,10,44,39,12,54,21,28,52,5,47,35,13,59,9,31,50,4,55,23,16,60,6,45,38,3,58,8,29,61,1,56,36,14,63,7,30,51,2,57,22,15,62,0,46,37];
     let spiral_arms_91translate = [11,11,5,5,6,6,7,33,26,19,10,9,8,22,20,21,21,23,36,36,37,24,24,35,35,38,51,51,25,34,39,39,50,61,62,40,40,52,60,60,63,63,41,53,53,59,58,58,57,42,49,54,54,55,56,46,48,48,47,47,45,45,30,43,44,44,31,29,29,15,32,32,28,28,16,14,14,27,17,17,13,3,3,2,18,12,12,4,1,1,0];
+    let none: ArrayVec<usize, 64> = (0..64).map(|x| x).collect();
 
     // Run the different functions; forever!
     loop {
+        for idx in (0..255).rev() {
+            rainbow_map(idx, &mut pixels, &none);
+            ws.write(pixels.iter().copied()).unwrap();
+            delay.delay_ms(10);
+        }
         led_red_pin.set_high().unwrap();
-        //rainbow_stripes(&mut ws, &mut delay);
-        //rainbow_concentric(&mut ws, &mut delay);
         for idx in (0..255).rev() {
             rainbow_map(idx, &mut pixels, &spiral_translate);
             ws.write(pixels.iter().copied()).unwrap();
@@ -149,10 +154,7 @@ fn main() -> ! {
             rainbow_map(idx, &mut pixels, &spiral_arms_91translate);
             ws.write(pixels.iter().copied()).unwrap();
             delay.delay_ms(10);
-        }
-        //rainbow_spirals(&mut ws, &mut delay);
-        //rainbow_concentric(&mut ws, &mut delay);
-        
+        }        
     }
 }        
 

@@ -489,6 +489,7 @@ dependencies = [
 name = "xiao-rp2040-playground"
 version = "0.1.0"
 dependencies = [
+ "arrayvec",
  "bytemuck",
  "cortex-m",
  "cortex-m-rt",
