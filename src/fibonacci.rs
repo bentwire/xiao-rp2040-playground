@@ -6,6 +6,7 @@
 mod pins;
 mod colorwheel;
 
+use core::iter;
 use colorwheel::colorwheel;
 use cortex_m::delay::Delay;
 
@@ -133,16 +134,39 @@ fn main() -> ! {
 
     led_blue_pin.set_high().unwrap();
 
+    let spiral_translate = [33,26,42,25,27,41,19,43,34,18,49,20,32,40,11,48,24,17,53,10,44,39,12,54,21,28,52,5,47,35,13,59,9,31,50,4,55,23,16,60,6,45,38,3,58,8,29,61,1,56,36,14,63,7,30,51,2,57,22,15,62,0,46,37];
+
     // Run the different functions; forever!
     loop {
         led_red_pin.set_high().unwrap();
         //rainbow_stripes(&mut ws, &mut delay);
-        rainbow_concentric(&mut ws, &mut delay);
+        //rainbow_concentric(&mut ws, &mut delay);
+        for idx in 0..255 {
+            rainbow_map(idx, &mut pixels, &spiral_translate);
+            ws.write(pixels.iter().copied()).unwrap();
+            delay.delay_ms(10);
+        }
         led_red_pin.set_low().unwrap();
         //rainbow_spirals(&mut ws, &mut delay);
-        rainbow_concentric(&mut ws, &mut delay);
+        //rainbow_concentric(&mut ws, &mut delay);
+        
     }
 }        
+
+// Maybe a more 'rusty' way of doing things...
+// Takes a ref to the pixels to change and a map to apply to the pixel index
+fn rainbow_map<PT>(index: u8, pixels: &mut [rgb::RGB<PT>], map: &[usize])
+where
+    PT: num::PrimInt + iter::Sum + core::convert::From<u8>,
+{
+    let num_map = map.len();
+
+    for (idx, map) in map.iter().enumerate() {
+        let pidx = (idx * 256 / num_map) + index as usize;
+        let pixel = &mut pixels[*map];
+        (pixel.r, pixel.g, pixel.b) = colorwheel((pidx & 0xff) as u8);
+    }
+}
 
 fn rainbow_stripes<'l, P, SM, I>(ws: &mut Ws2812<P, SM, CountDown<'l>, I>, delay: &mut Delay)
     where
@@ -159,13 +183,13 @@ fn rainbow_stripes<'l, P, SM, I>(ws: &mut Ws2812<P, SM, CountDown<'l>, I>, delay
         for cidx in 0..255u8 {
             let mut pix = 0;
             for pixel in pixels.iter_mut() {
-                let pidx = (pix * 256 / num_pixels) + (255 - cidx) as usize;
+                let pidx = (pix * 256 % num_pixels) + (255 - cidx) as usize;
                 (pixel.r, pixel.g, pixel.b) = colorwheel((pidx & 0xff) as u8);
                 *pixel /= 32;
                 pix += 1;
             }
             ws.write(pixels.iter().copied()).unwrap();
-            delay.delay_ms(10);
+            delay.delay_ms(20);
         }
     }
 }
@@ -187,7 +211,7 @@ fn rainbow_concentric<'l, P, SM, I>(ws: &mut Ws2812<P, SM, CountDown<'l>, I>, de
     for _i in 0..5u8 {
         for cidx in 0..255u8 {
             for pix in 0..num_pixels {
-                let pidx = (pix * 256 / num_pixels) + cidx as usize;
+                let pidx = (pix * 256 % num_pixels) + cidx as usize;
                 let idx = spiral_translate[num_pixels - 1 - pix];
                 let pixel = &mut pixels[idx];
                 (pixel.r, pixel.g, pixel.b) = colorwheel((pidx & 0xff) as u8);
@@ -215,7 +239,7 @@ fn rainbow_spirals<'l, P, SM, I>(ws: &mut Ws2812<P, SM, CountDown<'l>, I>, delay
     for _i in 0..5u8 {
         for cidx in 0..255u8 {
             for pix in 0..91 {
-                let pidx = (pix * 256 / 91) + cidx as usize;
+                let pidx = (pix * 256 % 91) + cidx as usize;
                 let pixel = &mut pixels[spiral_arms_91translate[pix]];
                 (pixel.r, pixel.g, pixel.b) = colorwheel((pidx & 0xff) as u8);
                 pixel.r /= 32;

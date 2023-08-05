@@ -11,6 +11,7 @@ cortex-m = "0.7.7"
 cortex-m-rt = "0.7.3"
 embedded-hal = "0.2.7"
 fugit = "0.3.7"
+num = { version = "0.4.1", default-features = false }
 panic-halt = "0.2.0"
 rgb = { version = "0.8.36", features = ["argb","as-bytes"] }
 rp2040-boot2 = "0.3.0"
