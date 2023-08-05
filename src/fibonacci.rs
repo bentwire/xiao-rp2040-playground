@@ -8,7 +8,6 @@ mod colorwheel;
 
 use core::iter;
 use colorwheel::colorwheel;
-use cortex_m::delay::Delay;
 
 use embedded_hal::digital::v2::OutputPin;
 use fugit::RateExtU32;
@@ -18,11 +17,8 @@ use hal::Timer;
 use panic_halt as _;
 use seeeduino_xiao_rp2040::entry;
 use seeeduino_xiao_rp2040::hal;
-use seeeduino_xiao_rp2040::hal::gpio::{FunctionConfig, PinId, Function, ValidPinMode};
+use seeeduino_xiao_rp2040::hal::Clock;
 use seeeduino_xiao_rp2040::hal::pac;
-use seeeduino_xiao_rp2040::hal::pio::StateMachineIndex;
-use seeeduino_xiao_rp2040::hal::prelude::*;
-use seeeduino_xiao_rp2040::hal::timer::CountDown;
 use smart_leds::SmartLedsWrite;
 use ws2812_pio::Ws2812;
 
@@ -134,19 +130,26 @@ fn main() -> ! {
 
     led_blue_pin.set_high().unwrap();
 
+    // Pixel translation matrix from rainbow+demo.py
     let spiral_translate = [33,26,42,25,27,41,19,43,34,18,49,20,32,40,11,48,24,17,53,10,44,39,12,54,21,28,52,5,47,35,13,59,9,31,50,4,55,23,16,60,6,45,38,3,58,8,29,61,1,56,36,14,63,7,30,51,2,57,22,15,62,0,46,37];
+    let spiral_arms_91translate = [11,11,5,5,6,6,7,33,26,19,10,9,8,22,20,21,21,23,36,36,37,24,24,35,35,38,51,51,25,34,39,39,50,61,62,40,40,52,60,60,63,63,41,53,53,59,58,58,57,42,49,54,54,55,56,46,48,48,47,47,45,45,30,43,44,44,31,29,29,15,32,32,28,28,16,14,14,27,17,17,13,3,3,2,18,12,12,4,1,1,0];
 
     // Run the different functions; forever!
     loop {
         led_red_pin.set_high().unwrap();
         //rainbow_stripes(&mut ws, &mut delay);
         //rainbow_concentric(&mut ws, &mut delay);
-        for idx in 0..255 {
+        for idx in (0..255).rev() {
             rainbow_map(idx, &mut pixels, &spiral_translate);
             ws.write(pixels.iter().copied()).unwrap();
             delay.delay_ms(10);
         }
         led_red_pin.set_low().unwrap();
+        for idx in 0..255 {
+            rainbow_map(idx, &mut pixels, &spiral_arms_91translate);
+            ws.write(pixels.iter().copied()).unwrap();
+            delay.delay_ms(10);
+        }
         //rainbow_spirals(&mut ws, &mut delay);
         //rainbow_concentric(&mut ws, &mut delay);
         
@@ -165,89 +168,5 @@ where
         let pidx = (idx * 256 / num_map) + index as usize;
         let pixel = &mut pixels[*map];
         (pixel.r, pixel.g, pixel.b) = colorwheel((pidx & 0xff) as u8);
-    }
-}
-
-fn rainbow_stripes<'l, P, SM, I>(ws: &mut Ws2812<P, SM, CountDown<'l>, I>, delay: &mut Delay)
-    where
-        P: PIOExt + FunctionConfig,
-        Function<P>: ValidPinMode<I>,
-        SM: StateMachineIndex,
-        I: PinId,
-{
-    let mut pixels: [rgb::RGB<u8>; 64] = [rgb::RGB8::new(0, 0, 0); 64];
-
-    let num_pixels = pixels.len();
-
-    for _i in 0..5u8 {
-        for cidx in 0..255u8 {
-            let mut pix = 0;
-            for pixel in pixels.iter_mut() {
-                let pidx = (pix * 256 % num_pixels) + (255 - cidx) as usize;
-                (pixel.r, pixel.g, pixel.b) = colorwheel((pidx & 0xff) as u8);
-                *pixel /= 32;
-                pix += 1;
-            }
-            ws.write(pixels.iter().copied()).unwrap();
-            delay.delay_ms(20);
-        }
-    }
-}
-
-fn rainbow_concentric<'l, P, SM, I>(ws: &mut Ws2812<P, SM, CountDown<'l>, I>, delay: &mut Delay)
-    where
-        P: PIOExt + FunctionConfig,
-        Function<P>: ValidPinMode<I>,
-        SM: StateMachineIndex,
-        I: PinId,
-{
-    // Pixel translation matrix from rainbow+demo.py
-    let spiral_translate = [33,26,42,25,27,41,19,43,34,18,49,20,32,40,11,48,24,17,53,10,44,39,12,54,21,28,52,5,47,35,13,59,9,31,50,4,55,23,16,60,6,45,38,3,58,8,29,61,1,56,36,14,63,7,30,51,2,57,22,15,62,0,46,37];
-
-    let mut pixels: [rgb::RGB<u8>; 64] = [rgb::RGB8::new(0, 0, 0); 64];
-
-    let num_pixels = pixels.len();
-
-    for _i in 0..5u8 {
-        for cidx in 0..255u8 {
-            for pix in 0..num_pixels {
-                let pidx = (pix * 256 % num_pixels) + cidx as usize;
-                let idx = spiral_translate[num_pixels - 1 - pix];
-                let pixel = &mut pixels[idx];
-                (pixel.r, pixel.g, pixel.b) = colorwheel((pidx & 0xff) as u8);
-                *pixel /= 2;
-            }
-            ws.write(pixels.iter().copied()).unwrap();
-            delay.delay_ms(20);
-        }
-    }
-}
-
-fn rainbow_spirals<'l, P, SM, I>(ws: &mut Ws2812<P, SM, CountDown<'l>, I>, delay: &mut Delay)
-    where
-        P: PIOExt + FunctionConfig,
-        Function<P>: ValidPinMode<I>,
-        SM: StateMachineIndex,
-        I: PinId,
-{
-    // Pixel translation matrix from rainbow+demo.py
-    let spiral_arms_91translate = [11,11,5,5,6,6,7,33,26,19,10,9,8,22,20,21,21,23,36,36,37,24,24,35,35,38,51,51,25,34,39,39,50,61,62,40,40,52,60,60,63,63,41,53,53,59,58,58,57,42,49,54,54,55,56,46,48,48,47,47,45,45,30,43,44,44,31,29,29,15,32,32,28,28,16,14,14,27,17,17,13,3,3,2,18,12,12,4,1,1,0];
-    
-    let mut pixels: [rgb::RGB<u8>; 64] = [rgb::RGB8::new(0, 0, 0); 64];
-    //let brt = rgb::RGB8::new(4, 4, 4);
-
-    for _i in 0..5u8 {
-        for cidx in 0..255u8 {
-            for pix in 0..91 {
-                let pidx = (pix * 256 % 91) + cidx as usize;
-                let pixel = &mut pixels[spiral_arms_91translate[pix]];
-                (pixel.r, pixel.g, pixel.b) = colorwheel((pidx & 0xff) as u8);
-                pixel.r /= 32;
-                pixel.g /= 32;
-                pixel.b /= 32;
-            }
-            ws.write(pixels.iter().copied()).unwrap();
-            delay.delay_ms(10);
-        }
     }
 }
